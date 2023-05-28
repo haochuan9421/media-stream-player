@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>音视频输入设备在线播放器</title>
+    <style>
+      body {
+        margin: 0;
+      }
+      body::-webkit-scrollbar {
+        display: none;
+      }
+      #toolbar {
+        height: 300px;
+        background: #f2ff8ab5;
+      }
+      #toolbar > * {
+        margin: 20px 10px;
+      }
+      #player {
+        cursor: none;
+        display: block;
+        height: 100vh;
+        aspect-ratio: calc(16 / 9);
+      }
+      #player::-webkit-media-controls {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <video id="player"></video>
+
+    <div id="toolbar">
+      <label
+        >请选择视频输入设备：
+        <select id="videoinput">
+          <option value="">关闭</option>
+        </select>
+      </label>
+      <label
+        >请选择音频输入设备：
+        <select id="audioinput">
+          <option value="">关闭</option>
+        </select>
+      </label>
+      <button id="fullscreen">全屏显示</button>
+    </div>
+
+    <script type="module">
+      try {
+        // 先检查用户对访问“视频输入设备”的授权情况，如果是待授权（"prompt"）状态，则先请求授权，
+        // 因为只有获取了相关权限，enumerateDevices 接口才能拿到设备的完整信息，不然 deviceId 等字段都是空的
+        {
+          const { state } = await navigator.permissions.query({
+            name: "camera",
+          });
+          if (state === "prompt") {
+            if (navigator.permissions.request) {
+              // 目前 request API 的支持度还不太好，浏览器要么就是不支持，要么就是需要手动开启 https://developer.mozilla.org/en-US/docs/Web/API/Permissions
+              await navigator.permissions.request({ name: "camera" }).catch(() => {});
+            } else {
+              // 在不支持 request API 的浏览器中，直接通过 getUserMedia 方法来触发权限请求弹窗，如果用户没有授权或者没有相关输入设备，调用这个方法时会报错，但不管怎样，我们只是触发权限请求弹窗就行了
+              await navigator.mediaDevices
+                .getUserMedia({ video: true })
+                .then((stream) =>
+                  stream.getTracks().forEach((track) => {
+                    track.stop();
+                    stream.removeTrack(track);
+                  })
+                )
+                .catch(() => {});
+            }
+          }
+        }
+
+        // 同上，针对“音频输入设备”
+        {
+          const { state } = await navigator.permissions.query({
+            name: "microphone",
+          });
+          if (state === "prompt") {
+            if (navigator.permissions.request) {
+              await navigator.permissions.request({ name: "microphone" }).catch(() => {});
+            } else {
+              await navigator.mediaDevices
+                .getUserMedia({ audio: true })
+                .then((stream) =>
+                  stream.getTracks().forEach((track) => {
+                    track.stop();
+                    stream.removeTrack(track);
+                  })
+                )
+                .catch(() => {});
+            }
+          }
+        }
+
+        // 获取设备列表
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        console.log("devices", devices);
+
+        // 把可用的音视频输入设备添加到选择框
+        const videoinputSelect = document.querySelector("#videoinput");
+        const audioinputSelect = document.querySelector("#audioinput");
+        const videoinputDevices = [];
+        const audioinputDevices = [];
+        for (const device of devices) {
+          if (device.deviceId && (device.kind === "videoinput" || device.kind === "audioinput")) {
+            const option = document.createElement("option");
+            option.value = device.deviceId;
+            option.label = device.label;
+            switch (device.kind) {
+              case "videoinput":
+                videoinputSelect.add(option);
+                videoinputDevices.push(device);
+                break;
+              case "audioinput":
+                audioinputSelect.add(option);
+                audioinputDevices.push(device);
+                break;
+            }
+          }
+        }
+
+        // 配置自动播放
+        if (videoinputDevices.length > 0) {
+          // 默认只选中第一个视频设备，不选中音频设备
+          videoinputSelect.value = videoinputDevices[0].deviceId;
+        } else if (audioinputDevices.length > 0) {
+          // 当没视频设备时，才考虑默认选中音频设备
+          audioinputSelect.value = audioinputDevices[0].deviceId;
+        }
+        // 如果音视频设备都没有的话，这里会抛出错误
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: videoinputSelect.value
+            ? {
+                deviceId: { exact: videoinputSelect.value },
+                aspectRatio: 16 / 9,
+                width: { ideal: 1920 },
+                resizeMode: "none",
+              }
+            : false,
+          audio: audioinputSelect.value ? { deviceId: { exact: audioinputSelect.value } } : false,
+        });
+        const player = document.querySelector("#player");
+        player.srcObject = stream;
+        player.onloadedmetadata = () => player.play();
+
+        // 支持切换输入设备
+        videoinputSelect.onchange = async (ev) => {
+          try {
+            // 移除旧的视频轨道
+            stream.getVideoTracks().forEach((track) => {
+              track.stop();
+              stream.removeTrack(track);
+            });
+            // 添加新的视频轨道
+            if (ev.target.value) {
+              (
+                await navigator.mediaDevices.getUserMedia({
+                  video: {
+                    deviceId: { exact: ev.target.value },
+                    aspectRatio: 16 / 9,
+                    width: { ideal: 1920 },
+                    resizeMode: "none",
+                  },
+                })
+              )
+                .getVideoTracks()
+                .forEach((track) => stream.addTrack(track));
+            }
+          } catch (error) {
+            alert(error.message);
+          }
+        };
+        audioinputSelect.onchange = async (ev) => {
+          try {
+            // 移除旧的音频轨道
+            stream.getAudioTracks().forEach((track) => {
+              track.stop();
+              stream.removeTrack(track);
+            });
+            // 添加新的音频轨道
+            if (ev.target.value) {
+              (
+                await navigator.mediaDevices.getUserMedia({
+                  audio: {
+                    deviceId: { exact: ev.target.value },
+                  },
+                })
+              )
+                .getAudioTracks()
+                .forEach((track) => stream.addTrack(track));
+            }
+          } catch (error) {
+            alert(error.message);
+          }
+        };
+
+        // 支持全屏播放
+        const fullscreen = document.querySelector("#fullscreen");
+        fullscreen.onclick = () => {
+          player.requestFullscreen();
+        };
+      } catch (error) {
+        alert(error.message);
+      }
+    </script>
+  </body>
+</html>
