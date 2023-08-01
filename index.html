@@ -46,8 +46,10 @@
         </select>
       </label>
       <button id="fullscreen">全屏显示</button>
+      <button id="capture">截图</button>
+      <button id="record">开始录制</button>
     </div>
-    
+
     <video id="player"></video>
 
     <script type="module">
@@ -202,9 +204,78 @@
         };
 
         // 支持全屏播放
-        const fullscreen = document.querySelector("#fullscreen");
-        fullscreen.onclick = () => {
+        const fullscreenBtn = document.querySelector("#fullscreen");
+        fullscreenBtn.onclick = () => {
           player.requestFullscreen();
+        };
+
+        function curTime() {
+          const time = new Date();
+          const year = time.getFullYear();
+          const month = `${time.getMonth() + 1}`.padStart(2, "0");
+          const date = `${time.getDate()}`.padStart(2, "0");
+          const hour = `${time.getHours()}`.padStart(2, "0");
+          const minute = `${time.getMinutes()}`.padStart(2, "0");
+          const second = `${time.getSeconds()}`.padStart(2, "0");
+          const milliSecond = `${time.getMilliseconds()}`.padStart(3, "0");
+          return `${year}${month}${date}${hour}${minute}${second}${milliSecond}`;
+        }
+
+        // 支持截图
+        const captureBtn = document.querySelector("#capture");
+        captureBtn.onclick = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = player.videoWidth;
+          canvas.height = player.videoHeight;
+          const context = canvas.getContext("2d");
+          context.drawImage(player, 0, 0, canvas.width, canvas.height);
+
+          const downloadLink = document.createElement("a");
+          downloadLink.href = canvas.toDataURL("image/png");
+          downloadLink.download = `${curTime()}.png`;
+          downloadLink.style.display = "none";
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+        };
+
+        // 支持录屏
+        const recordBtn = document.querySelector("#record");
+        let chunks = [];
+        let recording = false;
+        let recorder = new MediaRecorder(player.srcObject, {
+          mimeType: "video/webm",
+          videoBitsPerSecond: 50_000_000,
+        });
+        recorder.onstart = (e) => {
+          recordBtn.disabled = false;
+          recordBtn.innerText = "结束录制";
+        };
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            chunks.push(e.data);
+          }
+        };
+        recorder.onstop = (e) => {
+          recordBtn.disabled = false;
+          recordBtn.innerText = "开始录制";
+
+          const blob = new Blob(chunks, { type: "video/webm" });
+          const url = URL.createObjectURL(blob);
+          const downloadLink = document.createElement("a");
+          downloadLink.href = url;
+          downloadLink.download = `${curTime()}.webm`;
+          downloadLink.style.display = "none";
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          URL.revokeObjectURL(url);
+          chunks = [];
+        };
+        recordBtn.onclick = () => {
+          recordBtn.disabled = true;
+          recording ? recorder.stop() : recorder.start();
+          recording = !recording;
         };
       } catch (error) {
         alert(error.message);
