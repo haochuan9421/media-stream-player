@@ -57,47 +57,42 @@
         // 先检查用户对访问“视频输入设备”的授权情况，如果是待授权（"prompt"）状态，则先请求授权，
         // 因为只有获取了相关权限，enumerateDevices 接口才能拿到设备的完整信息，不然 deviceId 等字段都是空的
         {
-          const { state } = await navigator.permissions.query({
-            name: "camera",
-          });
+          const { state } = await navigator.permissions
+            .query({
+              name: "camera",
+            })
+            .catch(() => ({ state: "prompt" }));
           if (state === "prompt") {
-            if (navigator.permissions.request) {
-              // 目前 request API 的支持度还不太好，浏览器要么就是不支持，要么就是需要手动开启 https://developer.mozilla.org/en-US/docs/Web/API/Permissions
-              await navigator.permissions.request({ name: "camera" }).catch(() => {});
-            } else {
-              // 在不支持 request API 的浏览器中，直接通过 getUserMedia 方法来触发权限请求弹窗，如果用户没有授权或者没有相关输入设备，调用这个方法时会报错，但不管怎样，我们只是触发权限请求弹窗就行了
-              await navigator.mediaDevices
-                .getUserMedia({ video: true })
-                .then((stream) =>
-                  stream.getTracks().forEach((track) => {
-                    track.stop();
-                    stream.removeTrack(track);
-                  })
-                )
-                .catch(() => {});
-            }
+            // 通过 getUserMedia 方法来触发权限请求弹窗，如果用户没有授权或者没有相关输入设备，调用这个方法时会报错，但不管怎样，我们只是触发权限请求弹窗就行了
+            await navigator.mediaDevices
+              .getUserMedia({ video: true })
+              .then((stream) =>
+                stream.getTracks().forEach((track) => {
+                  track.stop();
+                  stream.removeTrack(track);
+                })
+              )
+              .catch(() => {});
           }
         }
 
         // 同上，针对“音频输入设备”
         {
-          const { state } = await navigator.permissions.query({
-            name: "microphone",
-          });
+          const { state } = await navigator.permissions
+            .query({
+              name: "microphone",
+            })
+            .catch(() => ({ state: "prompt" }));
           if (state === "prompt") {
-            if (navigator.permissions.request) {
-              await navigator.permissions.request({ name: "microphone" }).catch(() => {});
-            } else {
-              await navigator.mediaDevices
-                .getUserMedia({ audio: true })
-                .then((stream) =>
-                  stream.getTracks().forEach((track) => {
-                    track.stop();
-                    stream.removeTrack(track);
-                  })
-                )
-                .catch(() => {});
-            }
+            await navigator.mediaDevices
+              .getUserMedia({ audio: true })
+              .then((stream) =>
+                stream.getTracks().forEach((track) => {
+                  track.stop();
+                  stream.removeTrack(track);
+                })
+              )
+              .catch(() => {});
           }
         }
 
@@ -111,7 +106,10 @@
         const videoinputDevices = [];
         const audioinputDevices = [];
         for (const device of devices) {
-          if (device.deviceId && (device.kind === "videoinput" || device.kind === "audioinput")) {
+          if (
+            device.deviceId &&
+            (device.kind === "videoinput" || device.kind === "audioinput")
+          ) {
             const option = document.createElement("option");
             option.value = device.deviceId;
             option.label = device.label;
@@ -146,7 +144,9 @@
                 resizeMode: "none",
               }
             : false,
-          audio: audioinputSelect.value ? { deviceId: { exact: audioinputSelect.value } } : false,
+          audio: audioinputSelect.value
+            ? { deviceId: { exact: audioinputSelect.value } }
+            : false,
         });
         const player = document.querySelector("#player");
         player.srcObject = stream;
@@ -241,42 +241,111 @@
 
         // 支持录屏
         const recordBtn = document.querySelector("#record");
-        let chunks = [];
-        let recording = false;
-        let recorder = new MediaRecorder(player.srcObject, {
-          mimeType: "video/webm",
-          videoBitsPerSecond: 50_000_000,
-        });
-        recorder.onstart = (e) => {
-          recordBtn.disabled = false;
-          recordBtn.innerText = "结束录制";
-        };
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) {
-            chunks.push(e.data);
-          }
-        };
-        recorder.onstop = (e) => {
-          recordBtn.disabled = false;
-          recordBtn.innerText = "开始录制";
+        const formats = [
+          {
+            mimeType: "video/mp4",
+            extname: "mp4",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/webm",
+            extname: "webm",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/mpeg",
+            extname: "mpeg",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/ogg",
+            extname: "ogv",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/quicktime",
+            extname: "mov",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/x-msvideo",
+            extname: "avi",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/x-ms-wmv",
+            extname: "wmv",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/x-flv",
+            extname: "flv",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "application/x-mpegURL",
+            extname: ".m3u8",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/mp2t",
+            extname: ".ts",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/3gpp",
+            extname: ".3gp",
+            videoBitsPerSecond: 50_000_000,
+          },
+          {
+            mimeType: "video/3gpp2",
+            extname: ".3g2",
+            videoBitsPerSecond: 50_000_000,
+          },
+        ].filter(({ mimeType }) => MediaRecorder.isTypeSupported(mimeType));
+        console.log("Supported formats", formats);
 
-          const blob = new Blob(chunks, { type: "video/webm" });
-          const url = URL.createObjectURL(blob);
-          const downloadLink = document.createElement("a");
-          downloadLink.href = url;
-          downloadLink.download = `${curTime()}.webm`;
-          downloadLink.style.display = "none";
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-          URL.revokeObjectURL(url);
-          chunks = [];
-        };
-        recordBtn.onclick = () => {
-          recordBtn.disabled = true;
-          recording ? recorder.stop() : recorder.start();
-          recording = !recording;
-        };
+        if (formats.length) {
+          let format = formats[0];
+          let chunks = [];
+          let recording = false;
+          let recorder = new MediaRecorder(player.srcObject, {
+            mimeType: format.mimeType,
+            videoBitsPerSecond: format.videoBitsPerSecond,
+          });
+          recorder.onstart = (e) => {
+            recordBtn.disabled = false;
+            recordBtn.innerText = "结束录制";
+          };
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) {
+              chunks.push(e.data);
+            }
+          };
+          recorder.onstop = (e) => {
+            recordBtn.disabled = false;
+            recordBtn.innerText = "开始录制";
+
+            const blob = new Blob(chunks, { type: format.mimeType });
+            const url = URL.createObjectURL(blob);
+            const downloadLink = document.createElement("a");
+            downloadLink.href = url;
+            downloadLink.download = `${curTime()}.${format.extname}`;
+            downloadLink.style.display = "none";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+            URL.revokeObjectURL(url);
+            chunks = [];
+          };
+          recordBtn.onclick = () => {
+            recordBtn.disabled = true;
+            recording ? recorder.stop() : recorder.start();
+            recording = !recording;
+          };
+        } else {
+          recordBtn.style.display = "none";
+        }
       } catch (error) {
         alert(error.message);
       }
